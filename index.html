@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Diagnostic Booking</title>
+    
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Load Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Inter Font -->
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .cart-bounce { animation: bounce 0.5s; }
+        @keyframes bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+        .bg-primary { background-color: #1e40af; } /* Blue 800 */
+        .text-primary { color: #1e40af; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+    <!-- Main Navigation/Header -->
+    <nav class="bg-white shadow-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <a href="#" class="text-2xl font-bold text-primary">True Health</a>
+                
+                <!-- Search Bar & Cart Icon Container -->
+                <div class="flex items-center space-x-4">
+                    <!-- Search Input (Hidden initially, appears on focus/use) -->
+                    <div class="relative hidden sm:block w-96">
+                        <input type="text" id="search-input" placeholder="Search tests (e.g., CBC, MRI)..." 
+                            class="w-full p-2 pl-10 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-primary transition"
+                            oninput="handleSearch(this.value)" autocomplete="off">
+                        <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                        
+                        <!-- Search Results Dropdown -->
+                        <div id="search-results-list" class="absolute left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto hidden">
+                            <!-- Results injected here -->
+                        </div>
+                    </div>
+                    
+                    <!-- Cart Button -->
+                    <button onclick="openCartModal()" class="relative p-2 text-gray-600 hover:text-primary transition">
+                        <i class="fas fa-shopping-cart text-xl"></i>
+                        <span id="cart-count" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center opacity-0 transition-opacity duration-300">0</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Main Content Area -->
+    <main class="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">
+        <section class="text-center p-10 bg-white shadow-xl rounded-xl">
+            <h2 class="text-3xl font-extrabold text-gray-800 mb-2">Book Your Diagnostic Tests</h2>
+            <p class="text-gray-500 mb-6">Find and add pathology or radiology tests using the search bar above.</p>
+            
+            <!-- Mobile Search Bar -->
+            <div class="relative sm:hidden w-full">
+                <input type="text" id="mobile-search-input" placeholder="Search tests..." 
+                    class="w-full p-3 pl-10 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-primary transition"
+                    oninput="handleSearch(this.value)" autocomplete="off">
+                <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                
+                <!-- Mobile Search Results Dropdown -->
+                <div id="mobile-search-results-list" class="absolute left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto hidden">
+                    <!-- Results injected here -->
+                </div>
+            </div>
+            
+        </section>
+
+        <!-- Cart Display (Minimized) -->
+        <section class="mt-8">
+            <div id="cart-summary-card" class="bg-white p-4 rounded-xl shadow-lg border-l-4 border-primary hidden cursor-pointer hover:bg-gray-50 transition" onclick="openCartModal()">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-lg font-semibold text-gray-700 flex items-center">
+                        <i class="fas fa-list-check mr-2 text-primary"></i> <span id="summary-count">0</span> Tests Selected
+                    </h3>
+                    <div class="text-right">
+                        <span class="text-xs text-gray-500 block">Estimated Total</span>
+                        <span id="summary-total" class="text-xl font-bold text-green-600">₹0</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Modal Base (Reusable for all popups) -->
+    <div id="app-modal" class="fixed inset-0 bg-black bg-opacity-50 z-[99] hidden flex items-center justify-center p-4 backdrop-blur-sm transition-opacity duration-300">
+        <div id="modal-content-container" class="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto transform scale-95 transition-transform duration-300">
+            <!-- Content will be injected here -->
+        </div>
+    </div>
+
+    <script>
+        // --- GLOBAL STATE & DATA ---
+        let cart = []; // { testId, testName, labId, labName, price, category }
+        let cartLabId = null; 
+
+        // Mock Data: 5 Labs
+        const LABS = [
+            { id: 101, name: "MaxCare Diagnostics", baseCostFactor: 1.1 },
+            { id: 102, name: "Star PathLabs", baseCostFactor: 0.95 },
+            { id: 103, name: "City Scan & Labs", baseCostFactor: 1.05 },
+            { id: 104, name: "Precision Health Centers", baseCostFactor: 1.2 },
+            { id: 105, name: "General Wellness", baseCostFactor: 0.8 },
+        ];
+
+        // Mock Data: 10 Tests
+        const TESTS = [
+            { id: 1, name: "Complete Blood Count (CBC)", basePrice: 299, category: "Pathology" },
+            { id: 2, name: "Liver Function Test (LFT)", basePrice: 599, category: "Pathology" },
+            { id: 3, name: "Kidney Function Test (KFT)", basePrice: 599, category: "Pathology" },
+            { id: 4, name: "Thyroid Profile (TFT)", basePrice: 499, category: "Pathology" },
+            { id: 5, name: "Vitamin D Total", basePrice: 899, category: "Pathology" },
+            { id: 6, name: "Urine Routine & Microscopy", basePrice: 199, category: "Pathology" },
+            { id: 7, name: "MRI Brain", basePrice: 2999, category: "Radiology" },
+            { id: 8, name: "CT Chest", basePrice: 1999, category: "Radiology" },
+            { id: 9, name: "Basic Health Package", basePrice: 1499, category: "Health Package" },
+            { id: 10, name: "Diabetic Profile", basePrice: 999, category: "Health Package" },
+        ];
+
+        // Helper to calculate price for a test at a specific lab
+        const calculatePrice = (basePrice, labId) => {
+            const lab = LABS.find(l => l.id === labId);
+            const price = Math.round(basePrice * lab.baseCostFactor / 10) * 10; // Round to nearest 10
+            return price;
+        };
+
+        // Helper to get category badge class
+        const getBadgeClass = (category) => {
+            switch (category) {
+                case 'Pathology': return 'bg-blue-100 text-blue-800';
+                case 'Radiology': return 'bg-red-100 text-red-800';
+                case 'Health Package': return 'bg-green-100 text-green-800';
+                case 'Cardiology': return 'bg-yellow-100 text-yellow-800'; // Added for potential future use
+                default: return 'bg-gray-200 text-gray-700';
+            }
+        };
+
+        // --- MODAL / ALERT LOGIC (Replaces alert/confirm) ---
+        const modalEl = document.getElementById('app-modal');
+        const modalContent = document.getElementById('modal-content-container');
+
+        const openModal = (contentHtml, maxWidth = 'max-w-lg') => {
+            modalContent.className = `bg-white rounded-xl shadow-2xl ${maxWidth} w-full max-h-[90vh] overflow-y-auto transform scale-95 transition-transform duration-300`;
+            modalContent.innerHTML = contentHtml;
+            modalEl.classList.remove('hidden');
+            // Animate in
+            setTimeout(() => modalContent.classList.remove('scale-95'), 10);
+        };
+
+        const closeModal = () => {
+            modalEl.classList.add('hidden');
+            modalContent.classList.add('scale-95');
+        };
+
+        // Close modal on backdrop click
+        modalEl.addEventListener('click', (e) => {
+            if (e.target === modalEl) {
+                closeModal();
+            }
+        });
+
+        // Function to show a custom alert message
+        const showAlert = (title, message) => {
+            const html = `
+                <div class="p-6 text-center">
+                    <i class="fas fa-exclamation-circle text-red-500 text-4xl mb-4"></i>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3">${title}</h3>
+                    <p class="text-sm text-gray-600 mb-6">${message}</p>
+                    <button onclick="closeModal()" class="px-6 py-2 bg-primary text-white font-semibold rounded-lg hover:bg-blue-900 transition">
+                        OK
+                    </button>
+                </div>
+            `;
+            openModal(html, 'max-w-sm');
+        };
+        
+        // --- SEARCH LOGIC ---
+        const searchInput = document.getElementById('search-input');
+        const mobileSearchInput = document.getElementById('mobile-search-input');
+
+        const handleSearch = (query) => {
+            const desktopList = document.getElementById('search-results-list');
+            const mobileList = document.getElementById('mobile-search-results-list');
+            
+            // Determine which list to use
+            const resultsList = query.length > 0 ? desktopList : desktopList; // Default to desktop for simplicity
+            const activeInput = query.length > 0 ? searchInput : mobileSearchInput;
+            const currentList = activeInput.id === 'search-input' ? desktopList : mobileList;
+
+            query = query.toLowerCase().trim();
+            currentList.innerHTML = '';
+            
+            if (query.length === 0) {
+                currentList.classList.add('hidden');
+                return;
+            }
+            
+            const filteredTests = TESTS.filter(test => test.name.toLowerCase().includes(query));
+
+            if (filteredTests.length === 0) {
+                currentList.classList.remove('hidden');
+                currentList.innerHTML = `<div class="p-4 text-center text-gray-500">No tests found matching "${query}"</div>`;
+                return;
+            }
+
+            // Render search results
+            currentList.classList.remove('hidden');
+            currentList.innerHTML = filteredTests.map(test => {
+                const badgeClass = getBadgeClass(test.category);
+                
+                // Find the cheapest lab price for display
+                const allPrices = LABS.map(lab => calculatePrice(test.basePrice, lab.id));
+                const minPrice = Math.min(...allPrices);
+
+                return `
+                    <div class="p-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer flex justify-between items-center" 
+                         onclick="showTestSelectionModal(${test.id})">
+                        <div>
+                            <h4 class="font-semibold text-gray-800">${test.name}</h4>
+                            <span class="text-xs font-medium px-2 py-0.5 rounded-full ${badgeClass}">${test.category}</span>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs text-gray-500 block">Starting from</span>
+                            <span class="text-lg font-bold text-primary">₹${minPrice}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        };
+
+        // Ensure both search inputs use the same function
+        searchInput.addEventListener('input', (e) => handleSearch(e.target.value));
+        mobileSearchInput.addEventListener('input', (e) => handleSearch(e.target.value));
+        
+        // --- TEST SELECTION MODAL ---
+        const showTestSelectionModal = (testId) => {
+            closeModal(); // Close search results first
+            const test = TESTS.find(t => t.id === testId);
+            if (!test) return;
+
+            // Get all lab price options for this test
+            const labOptions = LABS.map(lab => ({
+                ...lab,
+                price: calculatePrice(test.basePrice, lab.id),
+                isCompatible: cartLabId === null || cartLabId === lab.id,
+                alreadyAdded: cart.some(item => item.testId === test.id),
+            })).sort((a, b) => a.price - b.price); // Sort by price
+
+            const badgeClass = getBadgeClass(test.category);
+
+            // If test is already in cart, show alert instead
+            if (labOptions[0].alreadyAdded) {
+                return showAlert("Test Already Added", `${test.name} is already in your cart. You cannot add the same test again.`);
+            }
+
+            const html = `
+                <div class="p-6">
+                    <div class="flex justify-between items-start border-b pb-4 mb-4">
+                        <h3 class="text-2xl font-bold text-gray-800">${test.name}</h3>
+                        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 p-1"><i class="fas fa-times text-xl"></i></button>
+                    </div>
+                    
+                    <span class="text-sm font-medium px-3 py-1 rounded-full ${badgeClass} inline-block mb-4">${test.category} Test</span>
+
+                    <h4 class="text-lg font-semibold text-gray-700 mb-3">Select a Lab:</h4>
+                    
+                    <div class="space-y-3 max-h-80 overflow-y-auto">
+                        ${labOptions.map(lab => {
+                            const incompatible = !lab.isCompatible;
+                            const incompatibleText = cartLabId ? `(Cart is locked to ${LABS.find(l => l.id === cartLabId).name})` : '';
+                            const buttonDisabled = incompatible;
+                            const buttonClass = buttonDisabled ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-primary text-white hover:bg-blue-900';
+
+                            return `
+                                <div class="p-3 border rounded-lg flex items-center justify-between transition ${incompatible ? 'bg-red-50 border-red-200 opacity-70' : 'bg-white hover:border-primary'}">
+                                    <div class="flex-1">
+                                        <div class="font-medium text-gray-800">${lab.name}</div>
+                                        ${incompatible ? `<p class="text-xs text-red-600">${incompatibleText}</p>` : ''}
+                                    </div>
+                                    <div class="text-right mr-4">
+                                        <span class="text-xl font-bold ${incompatible ? 'text-gray-500' : 'text-green-600'}">₹${lab.price}</span>
+                                    </div>
+                                    <button 
+                                        onclick="if(!${buttonDisabled}){addToCart(${test.id}, ${lab.id}, ${lab.price}, '${test.name}', '${test.category}'); closeModal();}" 
+                                        class="px-4 py-2 text-sm rounded-lg font-semibold transition ${buttonClass}"
+                                        ${buttonDisabled ? 'disabled' : ''}
+                                    >
+                                        Add to Cart
+                                    </button>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+            openModal(html);
+        };
+
+        // --- CART MANAGEMENT ---
+        const addToCart = (testId, labId, price, testName, category) => {
+            const lab = LABS.find(l => l.id === labId);
+            
+            // Enforcement: If cart is empty, set the lab. If not empty, it must match.
+            if (cart.length === 0) {
+                cartLabId = labId;
+            } else if (cartLabId !== labId) {
+                // This path should be blocked in the selection modal, but as a final safeguard:
+                return showAlert("Cart Locked", `Your current cart is booked with ${LABS.find(l => l.id === cartLabId).name}. You must book all tests from the same lab.`);
+            }
+
+            // Enforcement: No duplicate test
+            if (cart.some(item => item.testId === testId)) {
+                return showAlert("Duplicate Test", `Test **${testName}** is already in the cart.`);
+            }
+
+            cart.push({ testId, testName, labId, labName: lab.name, price, category });
+            updateCartUI();
+        };
+
+        const removeFromCart = (index) => {
+            cart.splice(index, 1);
+            if (cart.length === 0) {
+                cartLabId = null; // Unlock the cart
+            }
+            updateCartUI();
+            
+            // Re-render the cart if the modal is open
+            if (!modalEl.classList.contains('hidden') && modalContent.innerHTML.includes('cart-modal-view')) {
+                 openCartModal();
+            }
+        };
+
+        const updateCartUI = () => {
+            const count = cart.length;
+            const total = cart.reduce((sum, item) => sum + item.price, 0);
+
+            // Update badge
+            const cartBadge = document.getElementById('cart-count');
+            cartBadge.textContent = count;
+            cartBadge.style.opacity = count > 0 ? '1' : '0';
+            if (count > 0) {
+                cartBadge.classList.remove('cart-bounce');
+                void cartBadge.offsetWidth; // Trigger reflow
+                cartBadge.classList.add('cart-bounce');
+            }
+
+            // Update summary card
+            const summaryCard = document.getElementById('cart-summary-card');
+            if (count > 0) {
+                summaryCard.classList.remove('hidden');
+            } else {
+                summaryCard.classList.add('hidden');
+            }
+            document.getElementById('summary-count').textContent = count;
+            document.getElementById('summary-total').textContent = `₹${total}`;
+        };
+
+        // --- CART MODAL ---
+        const openCartModal = () => {
+            const total = cart.reduce((sum, item) => sum + item.price, 0);
+
+            const cartItemsHtml = cart.length === 0 
+                ? `<div class="p-6 text-center text-gray-500">Your cart is empty. Add tests using the search bar.</div>`
+                : cart.map((item, index) => {
+                    const badgeClass = getBadgeClass(item.category);
+                    return `
+                        <div class="flex justify-between items-center p-3 border-b hover:bg-gray-50 transition">
+                            <div class="flex-1 min-w-0">
+                                <h4 class="font-semibold text-gray-800 truncate">${item.testName}</h4>
+                                <p class="text-xs text-gray-500 mt-1">
+                                    <span class="font-medium">${item.labName}</span>
+                                    <span class="text-xs font-medium px-2 py-0.5 ml-2 rounded-full ${badgeClass}">${item.category}</span>
+                                </p>
+                            </div>
+                            <div class="flex items-center gap-4 flex-shrink-0">
+                                <span class="text-xl font-bold text-green-600">₹${item.price}</span>
+                                <button onclick="removeFromCart(${index})" class="text-red-400 hover:text-red-600 transition p-1" title="Remove Test">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+            const cartHtml = `
+                <div class="cart-modal-view">
+                    <div class="p-6 border-b flex justify-between items-center">
+                        <h3 class="text-2xl font-bold text-primary flex items-center">
+                            <i class="fas fa-shopping-cart mr-3"></i> Your Booking Cart
+                        </h3>
+                        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 p-1"><i class="fas fa-times text-xl"></i></button>
+                    </div>
+
+                    <div class="p-4 bg-gray-50">
+                        <p class="text-sm font-medium text-gray-700">
+                            ${cartLabId ? `Current Lab: <span class="font-bold text-primary">${LABS.find(l => l.id === cartLabId).name}</span> (All tests must be from this lab)` : 'Please add a test to begin booking.'}
+                        </p>
+                    </div>
+
+                    <div class="max-h-96 overflow-y-auto divide-y divide-gray-100">
+                        ${cartItemsHtml}
+                    </div>
+
+                    <div class="p-6 bg-white border-t">
+                        <div class="flex justify-between items-center mb-4">
+                            <span class="text-xl font-semibold text-gray-700">Total Estimate:</span>
+                            <span class="text-3xl font-bold text-primary">₹${total}</span>
+                        </div>
+
+                        <div class="space-y-3">
+                            <button onclick="openPriceComparisonModal()" ${cart.length === 0 ? 'disabled' : ''} 
+                                class="w-full py-3 px-4 rounded-lg font-semibold text-sm transition shadow-sm 
+                                ${cart.length === 0 ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'}">
+                                <i class="fas fa-tag mr-2"></i> Compare Prices Across All Labs
+                            </button>
+                            <button onclick="checkoutViaWhatsApp()" ${cart.length === 0 ? 'disabled' : ''} 
+                                class="w-full py-3 px-4 rounded-lg font-bold text-white transition shadow-lg flex items-center justify-center gap-2 
+                                ${cart.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#25D366] hover:bg-[#128C7E]'}">
+                                <i class="fab fa-whatsapp text-2xl"></i> 
+                                Book All ${cart.length} Tests
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            openModal(cartHtml, 'max-w-xl');
+        };
+
+        // --- PRICE COMPARISON MODAL ---
+        const openPriceComparisonModal = () => {
+            if (cart.length === 0) return showAlert("Empty Cart", "Add tests to your cart before comparing prices.");
+
+            const originalLabId = cartLabId;
+            const originalLabName = LABS.find(l => l.id === originalLabId).name;
+
+            const comparisonData = LABS.map(lab => {
+                const totalCost = cart.reduce((sum, item) => {
+                    const testBase = TESTS.find(t => t.id === item.testId);
+                    return sum + calculatePrice(testBase.basePrice, lab.id);
+                }, 0);
+                return { ...lab, totalCost };
+            }).sort((a, b) => a.totalCost - b.totalCost); // Sort cheapest first
+
+            const comparisonHtml = `
+                <div>
+                    <div class="p-6 border-b flex justify-between items-center bg-gray-50">
+                        <h3 class="text-2xl font-bold text-green-600 flex items-center">
+                            <i class="fas fa-balance-scale-left mr-3"></i> Price Comparison
+                        </h3>
+                        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 p-1"><i class="fas fa-times text-xl"></i></button>
+                    </div>
+
+                    <div class="p-6">
+                        <p class="mb-4 text-gray-600 text-sm">
+                            Comparing the total cost of your **${cart.length} selected tests** across all ${LABS.length} diagnostic centers. Your current choice is highlighted.
+                        </p>
+                        <div class="space-y-4">
+                            ${comparisonData.map((lab, index) => {
+                                const isCheapest = index === 0;
+                                const isCurrent = lab.id === originalLabId;
+                                const isMostExpensive = index === comparisonData.length - 1;
+                                
+                                let cardClass = 'bg-white border-gray-200';
+                                let textClass = 'text-gray-800';
+                                
+                                if (isCheapest) {
+                                    cardClass = 'bg-green-50 border-green-500 border-2 shadow-lg';
+                                    textClass = 'text-green-700';
+                                } else if (isCurrent) {
+                                    cardClass = 'bg-blue-50 border-primary border-2 shadow-lg';
+                                    textClass = 'text-primary';
+                                } else if (isMostExpensive) {
+                                    cardClass = 'bg-red-50 border-red-200';
+                                    textClass = 'text-red-700';
+                                }
+
+                                return `
+                                    <div class="p-4 rounded-xl border transition ${cardClass} flex justify-between items-center">
+                                        <div class="flex-1">
+                                            <h4 class="font-bold text-lg ${textClass}">${lab.name}</h4>
+                                            <div class="text-xs mt-1 space-x-2">
+                                                ${isCheapest ? '<span class="px-2 py-0.5 rounded-full bg-green-200 text-green-800 font-semibold">Cheapest Option</span>' : ''}
+                                                ${isCurrent ? '<span class="px-2 py-0.5 rounded-full bg-primary text-white font-semibold">Your Current Choice</span>' : ''}
+                                            </div>
+                                        </div>
+                                        <div class="text-right">
+                                            <span class="text-2xl font-extrabold ${textClass}">₹${lab.totalCost}</span>
+                                            <span class="text-xs text-gray-500 block">Total for ${cart.length} tests</span>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                        <p class="mt-6 text-sm text-gray-500 italic">Note: If you wish to switch labs after comparing, you must remove all items from your cart and add them again, selecting the new lab in the search modal.</p>
+                    </div>
+                </div>
+            `;
+            openModal(comparisonHtml, 'max-w-xl');
+        };
+
+        // --- WHATSAPP BOOKING ---
+        const checkoutViaWhatsApp = () => {
+            if (cart.length === 0) return showAlert("Empty Cart", "Add tests to your cart before booking.");
+
+            const total = cart.reduce((sum, item) => sum + item.price, 0);
+            const labName = LABS.find(l => l.id === cartLabId).name;
+            const phone = "919876543210"; // Mock Phone Number
+
+            let msg = `*NEW BOOKING REQUEST*\n\n`;
+            msg += `Lab Selected: *${labName}*\n`;
+            msg += `Total Tests: ${cart.length}\n\n`;
+            msg += `--- Tests List ---\n`;
+            
+            cart.forEach((item, index) => {
+                msg += `${index + 1}. ${item.testName} (${item.category})\n`;
+                msg += `   Price: ₹${item.price}\n`;
+            });
+
+            msg += `\n*Grand Total: ₹${total}*\n`;
+            msg += `\nPlease confirm my booking and share available slots.`;
+
+            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+        };
+
+        // Initial setup
+        window.onload = () => {
+            updateCartUI();
+        };
+
+    </script>
+</body>
+</html>
